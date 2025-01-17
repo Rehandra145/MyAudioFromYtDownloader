@@ -1,33 +1,36 @@
 import os
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 import yt_dlp
-from ttkbootstrap import Style
-from ttkbootstrap.constants import PRIMARY
-from ttkbootstrap.widgets import Button
 from tkinter import Tk, Label, Entry, filedialog, messagebox, StringVar
+from tkinter.ttk import Progressbar, Button
 import threading
-import time
-from tkinter.ttk import Progressbar
 
 def clean_title(title):
     keywords_to_remove = [
-        "(Official Music Video)", "(Official Video)", "(Official Audio)",
-        "(Official Lyric Video)", "(Official)", "(Lyric Video)", "(Lyrics)",
-        "(Audio)", "(Music Video)", "(Video)", "(Lyrics Video)", "(Lyric)"
+        "(Official Music Video)", "(Official Video)", "(OFFICIAL VIDEO)", "(Official Audio)",
+        "(Official Lyric Video)", "(Official Lyrics Video)", "(Official)", "(Lyric Video)", "(Lyrics)",
+        "(Full Album Stream)", "(Audio)", "(Music Video)", "(Video)", "(Lyrics Video)", "(Lyric)",
+        "(OFFICIAL AUDIO STREAM)", "(Guitar Playthrough)"
     ]
     for keyword in keywords_to_remove:
         title = title.replace(keyword, "").strip()
     return title
 
+def clean_uploader(uploader):
+    # Jika nama uploader mengandung " - Topic", ambil bagian sebelum " - Topic"
+    if " - Topic" in uploader:
+        uploader = uploader.split(" - Topic")[0].strip()
+    return uploader
+
 def format_filename(entry):
     title = clean_title(entry.get('title', 'Unknown Title'))
-    uploader = entry.get('uploader', 'Unknown Uploader')
+    uploader = clean_uploader(entry.get('uploader', 'Unknown Uploader'))
 
-    # Check for '-' in title
     if '-' in title:
-        return title  # Use title only
+        return title
     else:
-        return f"/%(uploader)s - %(title)s"  # Use uploader - title
+        return f"{uploader} - {title}"
+
 
 def download_audio_from_playlist(playlist_url, save_path, progress_callback):
     try:
@@ -91,34 +94,30 @@ def convert_all_webm_in_directory(directory, output_directory, bitrate="256k", p
 def start_download_process(playlist_url, save_path, download_progress_bar, convert_progress_bar, progress_label):
     try:
         def update_download_progress(current, total):
-            progress_label.set(f"Downloading: {current}/{total} files")
+            progress_label.set(f"Downloaded: {current}/{total} files")
+            download_progress_bar['value'] = (current / total) * 100
+            root.update_idletasks()
 
         def update_convert_progress(current, total):
-            progress_label.set(f"Converting: {current}/{total} files")
+            progress_label.set(f"Converted: {current}/{total} files")
+            convert_progress_bar['value'] = (current / total) * 100
+            root.update_idletasks()
 
-        progress_label.set("Starting...")
-        time.sleep(3)  # Show "Starting..." for 3 seconds
+        download_progress_bar.grid()
+        convert_progress_bar.grid_remove()
+
         progress_label.set("Downloading...")
-
-        download_progress_bar.grid(row=5, column=0, columnspan=2, pady=5)
-        download_progress_bar.start()  # Start indeterminate animation
         download_audio_from_playlist(playlist_url, save_path, update_download_progress)
-        download_progress_bar.stop()  # Stop animation
-        download_progress_bar.grid_forget()
 
-        convert_progress_bar.grid(row=6, column=0, columnspan=2, pady=5)
-        convert_progress_bar.start()  # Start indeterminate animation
+        download_progress_bar.grid_remove()
+        convert_progress_bar.grid()
+
+        progress_label.set("Converting...")
         convert_all_webm_in_directory(save_path, save_path, progress_callback=update_convert_progress)
-        convert_progress_bar.stop()  # Stop animation
-        convert_progress_bar.grid_forget()
 
         messagebox.showinfo("Success", "All files downloaded and converted successfully!")
-        url_entry.delete(0, 'end')  # Clear the input field
+        url_entry.delete(0, 'end')
     except Exception as e:
-        download_progress_bar.stop()
-        download_progress_bar.grid_forget()
-        convert_progress_bar.stop()
-        convert_progress_bar.grid_forget()
         print(f"Error during process: {e}")
 
 def start_download():
@@ -129,35 +128,49 @@ def start_download():
         return
 
     progress_label.set("Starting...")
+    download_progress_bar.grid_remove()
+    convert_progress_bar.grid_remove()
 
-    threading.Thread(target=lambda: start_download_process(playlist_url, save_path, download_progress_bar, convert_progress_bar, progress_label)).start()
+    threading.Thread(
+        target=lambda: start_download_process(
+            playlist_url, save_path, download_progress_bar, convert_progress_bar, progress_label
+        )
+    ).start()
 
 def create_gui():
-    style = Style("flatly")
-    root = style.master
+    global root
+    root = Tk()
     root.title("YouTube Downloader")
     root.geometry("400x300")
 
-    Label(root, text="YouTube Playlist Downloader", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=10)
+    Label(root, text="YouTube Playlist Downloader", font=("Arial", 16, "bold")).grid(
+        row=0, column=0, columnspan=2, pady=10)
 
-    Label(root, text="Playlist URL:", font=("Arial", 12)).grid(row=1, column=0, pady=5, padx=10, sticky="e")
+    Label(root, text="Playlist URL:", font=("Arial", 12)).grid(
+        row=1, column=0, pady=5, padx=10, sticky="e")
 
     global url_entry
     url_entry = Entry(root, width=40)
     url_entry.grid(row=1, column=1, pady=5, padx=10, sticky="w")
 
     global download_progress_bar
-    download_progress_bar = Progressbar(root, length=400, mode="indeterminate")
+    download_progress_bar = Progressbar(root, length=400, mode="determinate")
+    download_progress_bar.grid(row=5, column=0, columnspan=2, pady=5)
+    download_progress_bar.grid_remove()  # Sembunyikan di awal
 
     global convert_progress_bar
-    convert_progress_bar = Progressbar(root, length=400, mode="indeterminate")
+    convert_progress_bar = Progressbar(root, length=400, mode="determinate")
+    convert_progress_bar.grid(row=6, column=0, columnspan=2, pady=5)
+    convert_progress_bar.grid_remove()  # Sembunyikan di awal
 
     global progress_label
     progress_label = StringVar()
     progress_label.set("")
-    Label(root, textvariable=progress_label, font=("Arial", 10)).grid(row=4, column=0, columnspan=2, pady=10)
+    Label(root, textvariable=progress_label, font=("Arial", 10)).grid(
+        row=4, column=0, columnspan=2, pady=10)
 
-    Button(root, text="Download and Convert", command=start_download, bootstyle=PRIMARY, width=30).grid(row=3, column=0, columnspan=2, pady=20)
+    Button(root, text="Download and Convert", command=start_download).grid(
+        row=3, column=0, columnspan=2, pady=20)
 
     root.mainloop()
 
